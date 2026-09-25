@@ -1,0 +1,15 @@
+# Sentinel Monitor Dashboard — backend dependency manifest
+#
+# Pinned to the versions validated by the pytest suite in this repo.
+# To upgrade: bump a pin, `pip install -r requirements.txt`, run `pytest -q`,
+# and record the new versions here plus in the CHANGELOG comment below.
+
+Django==6.1.1              # Web framework (already shipped with the venv)
+django-ninja>=1.6,<2.0     # API framework (module: `ninja`)
+django-ninja-jwt>=5.3,<6.0 # JWT auth for django-ninja (module: `ninja_jwt`)
+django-cors-headers>=4.3,<6  # dev CORS for the Vite frontend on :5173
+PyJWT>=2.9                 # cryptographic JWT backend used by django-ninja-jwt
+python-dotenv>=1.0,<2.0    # loads backend/.env into settings (secrets & flags)
+psycopg[binary]>=3.2,<4.0  # PostgreSQL driver for prod (SENTINEL_DB_ENGINE=postgresql)
+pytest>=8.3,<9.0           # test runner
+pytest-django>=4.9,<6.0    # Django integration for pytest (django_db fixtures)

@@ -1,0 +1,9 @@
+# pytest configuration for the Sentinel backend suite.
+# Run `python -m pytest` from the backend directory; testpaths defaults to
+# the local `tests/` package.
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "monitor.settings"
+python_files = ["test_*.py"]
+testpaths = ["tests"]
+addopts = "-q"

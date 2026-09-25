@@ -1,0 +1,34 @@
+# --- Python / Django ---
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+backend/db.sqlite3
+backend/db.sqlite3-journal
+backend/db.sqlite3-wal
+backend/db.sqlite3-shm
+backend/logs/*
+!backend/logs/.gitkeep
+backend/staticfiles/
+backend/media/
+
+# --- Secrets / environment (only the template is ever tracked) ---
+.env
+.env.*
+!.env.example
+
+# --- Test / coverage / profiling artifacts ---
+.coverage
+coverage.xml
+htmlcov/
+
+# --- Node / Vite ---
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
