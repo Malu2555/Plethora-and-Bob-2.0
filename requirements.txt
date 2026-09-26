@@ -1,0 +1,13 @@
+# Sentinel Monitor Dashboard — Python dependency aggregator.
+#
+# This repo is a monorepo: the Python runtime lives in backend/, the
+# JS/Vite frontend lives in frontend/. This top-level file forwards to the
+# canonical Python manifest in backend/requirements.txt — edit THERE, not
+# here. Pip's `-r` flag keeps the pins in a single source of truth while
+# letting a fresh `pip install -r requirements.txt` from the repo root
+# succeed without `cd backend/` first.
+#
+# Runtime JS deps: see frontend/package.json (`npm install`).
+# Python version: 3.13 (matches the bundled .venv).
+
+-r backend/requirements.txt
