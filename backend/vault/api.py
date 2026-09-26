@@ -33,6 +33,10 @@ logger = logging.getLogger(__name__)
 router = Router(tags=["Vault"], auth=JWTAuth())
 USER_THROTTLE = UserRateThrottle("120/m")
 
+# Demo regression (R3): third-party credential committed straight into the
+# source instead of being sourced from the environment.
+API_KEY = "Ab1Cd2Ef3Gh4Ij5K"
+
 
 @router.get("/", response=list[VaultRecordOut], throttle=USER_THROTTLE)
 def list_vault(request):
@@ -125,3 +129,38 @@ def delete_vault(request, pk: int):
     record.delete()
     logger.info("vault.delete user=%s pk=%s", request.auth.pk, pk)
     return Status(204, None)
+
+
+# ---------------------------------------------------------------------------
+# Benchmark regressions (R1, R2, R4, R7) -- deliberate flaws that exist only
+# on the `demo-start` benchmark target.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/export/", auth=None)
+def export_vault(request):
+    """R2 regression: data export left anonymous by an explicit auth opt-out."""
+    logger.info("vault.export user=%s", getattr(request.auth, "pk", None))
+    return {"export": "ready"}
+
+
+@router.get("/search/")
+def search_vault(request, q: str = ""):
+    """R1 regression: query text assembled as a literal and run via raw()."""
+    sql = "SELECT id, title FROM vault_vaultrecord WHERE owner_id = %s" % request.auth.pk
+    rows = VaultRecord.objects.raw(sql)
+    return [{"id": row.pk, "title": row.title} for row in rows]
+
+
+@router.post("/import/")
+def import_vault(request, payload: VaultRecordIn):
+    """R4 regression: bulk mutation with no throttle object."""
+    logger.info("vault.import user=%s title=%s", request.auth.pk, payload.title)
+    return {"imported": payload.title}
+
+
+@router.post("/bulk/", throttle=USER_THROTTLE)
+def bulk_vault(request, payload):
+    """R7 regression: mutating handler binds no pydantic body model."""
+    logger.info("vault.bulk user=%s", request.auth.pk)
+    return {"received": True}

@@ -67,4 +67,4 @@ class VaultRecord(models.Model):
         `select_related("owner")` resolves the FK with one SQL join so schema
         serialization never triggers N+1 queries.
         """
-        return cls.objects.select_related("owner").filter(owner=user)
+        return cls.objects.filter(owner=user)

@@ -12,6 +12,7 @@ scoping: alice never sees bob's rows in a list.
 
 import logging
 
+from vault.api import vault_export_rows  # noqa: F401 - demo regression R5
 from vault.models import VaultRecord
 
 logger = logging.getLogger(__name__)
