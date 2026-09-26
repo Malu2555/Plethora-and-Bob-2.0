@@ -40,23 +40,71 @@ Sign in with your Django superuser credentials, or create an account from /regis
 
 ### Parallel checkouts (`git worktree`)
 
-Exercise a second branch (e.g. a demo branch with deliberate flaws) without
-disturbing this checkout:
+Exercise another branch (e.g. the benchmark target below) without disturbing
+this checkout:
 
 ```powershell
-git worktree add ../demo-start -b demo-start
+git worktree add ../demo-start -b demo-start origin/demo-start
 New-Item -ItemType Junction -Path ../demo-start/backend/.venv -Target (Resolve-Path backend/.venv).Path
-
-cd backend
-python manage.py security_scan --root ..\..\demo-start\backend --branch demo-start
 ```
 
 The sibling directory shares this repository's history but has its own
-working files, so commits on `demo-start` never touch this checkout. The
+working files, so commits on its branch never touch this checkout. The
 `backend/.venv` junction reuses this interpreter (no second `pip install`);
 untracked files such as `backend/.env` and `db.sqlite3` do not travel between
-worktrees. `--root` scopes the source-file rules to the sibling tree — see
-Security Metrics for its exact reach.
+worktrees. (The branch already exists locally? Re-attach with
+`git worktree add ../demo-start demo-start`.) `--root` scopes the source-file
+rules to the sibling tree — see Security Metrics for its exact reach.
+
+### Bob 2.0 benchmark target (`demo-start`)
+
+`main` is the "after" reference: the scanner plus the clean implementation.
+`demo-start` is the "before" state: the same code with exactly one deliberate
+regression per scanner rule (its `demo(flaws): seed the seven deliberate
+regressions...` commit). Bob fixes the flaws in the **working tree only** —
+fixes are never committed, and each session is wiped with `git restore .`
+before the next attempt, so every attempt starts from the identical flawed
+baseline. The branch is never merged back to `main`.
+
+Scoring runs from **inside** `demo-start`: the source-side rules read its
+files while the registry rules and the N+1 probe introspect its live Django
+process, so all seven rule classes measure the flawed app itself (a `--root`
+sweep from `main` would only cover the source-side family). The harness in
+`benchmark/` wraps one attempt:
+
+```powershell
+benchmark/run.ps1 bob-attempt-1     # score; exit 1 while criticals remain
+cd ../demo-start; git restore .     # wipe the attempt before the next round
+```
+
+Scored runs append to demo-start's own scan history (`ScanRun` rows in its
+`backend/db.sqlite3`), so `manage.py security_scan` — or a dashboard served
+from `demo-start/backend` — shows the 7 -> 0 trend. Details:
+`benchmark/README.md`.
+
+### Reproducing the benchmark on a fresh machine
+
+Prerequisites: Git and Python 3.13.
+
+```powershell
+git clone https://github.com/Malu2555/Plethora-and-Bob-2.0.git
+cd Plethora-and-Bob-2.0
+python -m venv backend/.venv                        # or: py -3.13 -m venv backend/.venv
+backend\.venv\Scripts\pip install -r requirements.txt
+backend\.venv\Scripts\python.exe backend\manage.py migrate
+
+git worktree add ../demo-start -b demo-start origin/demo-start
+New-Item -ItemType Junction -Path ../demo-start/backend/.venv -Target (Resolve-Path backend/.venv).Path
+
+cd ../demo-start/backend
+.venv\Scripts\python.exe manage.py migrate          # demo-start keeps its own DB
+.venv\Scripts\python.exe manage.py security_scan    # expect 7 findings, exit 1
+```
+
+On macOS / Linux the venv lives at `backend/.venv/bin/python`; junctions are
+Windows-only, so give `demo-start` its own venv there
+(`python3.13 -m venv backend/.venv`). `benchmark/run.sh` covers the path
+differences for the scoring loop.
 
 ## API surface (all under /api/v1)
 
@@ -180,4 +228,5 @@ frontend/
   src/components/     AppShell, PostureScoreGauge, AuditTelemetryTiles,
                       SecurityFindingsTiles, MetricsTiles, AuditLogFeed, VaultList
   src/views/          LoginPage, DashboardPage, SecurityPage, VaultPage, AuditPage
+benchmark/            Bob 2.0 scoring harness (run.sh / run.ps1) + its README
 ```
