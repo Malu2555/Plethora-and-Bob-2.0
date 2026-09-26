@@ -5,20 +5,29 @@ security_scan -- run the vulnerability scanner from the command line.
     python manage.py security_scan --dry-run       # print only, nothing stored
     python manage.py security_scan --rule raw_sql --rule n_plus_one
     python manage.py security_scan --no-runtime-probe   # static rules only
+    python manage.py security_scan --root ..\\..\\demo-start\\backend
 
 Exit code contract (CI-gate friendly):
 
     * 0 -- scan finished with no critical findings
     * 1 -- scan finished with at least one critical finding
-    * 2 -- misconfiguration (unknown rule id, etc.)
+    * 2 -- misconfiguration (unknown rule id, bad --root, etc.)
 
-The scan is observational: it reads the backend tree and the live router
+`--root` scopes the SOURCE-side rules (raw_sql, hardcoded_secret,
+absent_tests) to another checkout -- e.g. a sibling `git worktree` -- and
+defaults the branch label to the target directory name. Registry rules
+(missing_auth, missing_rate_limit, missing_pydantic) and the N+1 runtime
+probe still introspect THIS Django process, so run the command from the
+checkout whose routers you want measured.
+
+The scan is observational: it reads the target tree and the live router
 registry, persists a ScanRun + Findings snapshot, and never edits source.
 """
 
 import logging
 import os
 import sys
+from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 
@@ -56,6 +65,15 @@ class Command(BaseCommand):
             help="Branch label stored on the ScanRun (default: checkout dir name).",
         )
         parser.add_argument(
+            "--root",
+            default=None,
+            help=(
+                "Backend tree to scan (default: this checkout's backend/). "
+                "Only source-file rules follow --root; registry + runtime "
+                "rules always inspect the running Django process."
+            ),
+        )
+        parser.add_argument(
             "--no-runtime-probe",
             action="store_true",
             help="Skip the N+1 runtime probe (static source rules only).",
@@ -68,15 +86,25 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         dry_run = options["dry_run"]
-        branch = options["branch"] or DEFAULT_BRANCH
         rule_ids = options["rule_ids"] or None
         runtime_probe = not options["no_runtime_probe"]
         collect_tests = not options["no_collect_tests"]
 
+        root_option = options.get("root")
+        if root_option:
+            root = Path(root_option).resolve()
+            if not root.is_dir():
+                raise CommandError(f"--root is not a directory: {root}", returncode=2)
+            default_branch = root.parent.name
+        else:
+            root = BACKEND_ROOT
+            default_branch = DEFAULT_BRANCH
+        branch = options["branch"] or default_branch or "worktree"
+
         try:
             if dry_run:
                 drafts, _ = collect_findings(
-                    root=BACKEND_ROOT,
+                    root=root,
                     rule_ids=rule_ids,
                     runtime_probe=runtime_probe,
                     collect_tests=collect_tests,
@@ -87,6 +115,7 @@ class Command(BaseCommand):
                 return
 
             run = run_scan_and_store(
+                root=root,
                 branch=branch,
                 trigger="cli",
                 rule_ids=rule_ids,
@@ -99,7 +128,7 @@ class Command(BaseCommand):
             )
             sys.exit(run.exit_code)
         except ValueError as exc:
-            raise CommandError(str(exc)) from exc
+            raise CommandError(str(exc), returncode=2) from exc
 
 
 def print_findings(stdout, drafts):

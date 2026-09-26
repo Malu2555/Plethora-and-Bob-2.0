@@ -12,9 +12,13 @@ are exercised against tiny synthetic ninja routers AND the real manifest.
 """
 
 import logging
+import subprocess
+import sys
+from io import StringIO
 from pathlib import Path
 
 import pytest
+from django.core.management import call_command
 from ninja import Router
 from pydantic import BaseModel
 
@@ -238,6 +242,28 @@ def test_secret_clean_on_real_tree():
     assert findings == [], [f["message"] for f in findings]
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="junctions are Windows-only")
+def test_secret_config_walk_survives_escaping_junction(tmp_path):
+    """A .venv junction must not drag the config walk into the OTHER checkout."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "creds.json").write_text(
+        '{"api_key": "Abc123Def456Ghi7890"}\n', encoding="utf-8"
+    )
+    root = tmp_path / "backend"
+    (root / "vault").mkdir(parents=True)
+    made = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(root / ".venv"), str(outside)],
+        capture_output=True,
+        text=True,
+    )
+    if made.returncode != 0:  # pragma: no cover - restricted environment
+        pytest.skip("junction creation not permitted here")
+
+    findings = hardcoded_secret.check(root=root, routers=[], options=NO_OPTIONS)
+    assert findings == []  # .venv pruned; the outside file is never scanned
+
+
 # --------------------------------------------------------------------------
 # R5 absent_tests
 # --------------------------------------------------------------------------
@@ -305,6 +331,15 @@ def test_run_scan_and_store_clean_tree(db):
     assert Finding.objects.filter(scan_run=run).count() == 0
 
 
+def test_no_rule_errors_on_clean_tree(db):
+    """Zero findings AND zero rule exceptions -- no silent scanning gaps."""
+    drafts, per_rule_log = scanner_module.collect_findings(
+        root=_backends_root(), runtime_probe=False, collect_tests=False
+    )
+    assert per_rule_log == {}
+    assert drafts == []
+
+
 def test_run_scan_and_store_persists_findings_and_fingerprints(db, tmp_path, monkeypatch):
     _write_tree(
         tmp_path,
@@ -327,6 +362,68 @@ def test_run_scan_and_store_persists_findings_and_fingerprints(db, tmp_path, mon
     assert first_rows and len(second_rows) == len(first_rows)
     fingerprints = [f.fingerprint for f in first_rows]
     assert len(set(fingerprints)) == len(fingerprints)  # keys are unique
+
+
+def test_run_scan_and_store_respects_explicit_root_override(db, tmp_path):
+    """--root parity: source rules follow the target tree, not this checkout."""
+    _write_tree(
+        tmp_path,
+        {"vault/flaky.py": 'def f(request):\n    return model.objects.raw("SELECT 1")\n'},
+    )
+
+    run = scanner_module.run_scan_and_store(
+        root=tmp_path,
+        branch="demo-start",
+        trigger="test",
+        runtime_probe=False,
+        collect_tests=False,
+    )
+
+    assert run.exit_code == 1  # critical findings in the TARGET tree
+    rows = list(Finding.objects.filter(scan_run=run))
+    # Both source-side rules followed the override: R1 saw the target's bad
+    # line, R5 saw the target's missing suite -- nothing from this checkout.
+    by_rule = {row.rule_id for row in rows}
+    assert by_rule == {"raw_sql", "absent_tests"}
+    flake = [row for row in rows if row.rule_id == "raw_sql"]
+    assert len(flake) == 1 and flake[0].file_path == "vault/flaky.py"
+
+
+def test_security_scan_command_root_override_reports_target_findings(db, tmp_path):
+    """`manage.py security_scan --root`: findings come from the target tree."""
+    _write_tree(
+        tmp_path,
+        {"vault/flaky.py": 'def f(request):\n    return model.objects.raw("SELECT 1")\n'},
+    )
+    out = StringIO()
+    with pytest.raises(SystemExit) as exc:
+        call_command(
+            "security_scan",
+            "--dry-run",
+            "--rule",
+            "raw_sql",
+            "--root",
+            str(tmp_path),
+            stdout=out,
+        )
+    assert exc.value.code == 1  # critical finding -> CI gate trips
+    rendered = out.getvalue()
+    assert "raw_sql" in rendered and "vault/flaky.py" in rendered
+
+
+def test_security_scan_command_root_override_clean_target(db, tmp_path):
+    """An empty target tree scans clean and exits 0 -- the sibling-branch smoke."""
+    out = StringIO()
+    call_command(
+        "security_scan",
+        "--dry-run",
+        "--rule",
+        "raw_sql",
+        "--root",
+        str(tmp_path),
+        stdout=out,
+    )
+    assert "0 findings" in out.getvalue()
 
 
 def test_scanner_rule_failure_is_contained(db, monkeypatch):

@@ -1,6 +1,7 @@
 """R3 hardcoded_secret -- flag credential-shaped literals in source files."""
 
 import logging
+import os
 import re
 from pathlib import Path
 
@@ -33,16 +34,31 @@ def _looks_secret(value: str) -> bool:
 
 
 def _iter_config_files(root: Path):
-    for suffix in CONFIG_SUFFIXES:
-        for path in sorted(root.rglob(f"*{suffix}")):
-            if path.name == ".env":
+    """
+    Yield (rel_path, text) for config-shaped files, never leaving `root`.
+
+    Walked with `os.walk` (not rglob) so excluded subtrees -- notably a
+    sibling worktree's `.venv` junction, which physically resolves into the
+    OTHER checkout -- are pruned before descent. `rel` is computed lexically
+    because a junctioned path resolves outside `root` and would raise
+    ValueError in `relative_to`.
+    """
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in EXCLUDED_DIR_PARTS]
+        base = Path(dirpath)
+        for name in sorted(filenames):
+            if not any(name.endswith(suffix) for suffix in CONFIG_SUFFIXES):
+                continue
+            if name == ".env":
                 continue  # the real env file is gitignored; ignore leftovers
-            rel = path.resolve().relative_to(root.resolve())
-            if any(part in EXCLUDED_DIR_PARTS for part in rel.parts[:-1]):
+            path = base / name
+            rel = path.relative_to(root).as_posix()
+            if rel in EXCLUDED_FILES:
                 continue
-            if rel.as_posix() in EXCLUDED_FILES:
-                continue
-            yield rel.as_posix(), path.read_text(encoding="utf-8", errors="replace")
+            try:
+                yield rel, path.read_text(encoding="utf-8", errors="replace")
+            except OSError:  # pragma: no cover - vanished or locked file
+                logger.warning("hardcoded_secret skipped unreadable file %s", rel)
 
 
 def check(*, root, routers, options):

@@ -78,9 +78,22 @@ def collect_findings(*, root=BACKEND_ROOT, routers=None, rule_ids=None, runtime_
     return drafts, per_rule_log
 
 
-def run_scan_and_store(*, branch="worktree", trigger="cli", rule_ids=None, runtime_probe=True, collect_tests=False):
+def run_scan_and_store(
+    *,
+    root=None,
+    branch="worktree",
+    trigger="cli",
+    rule_ids=None,
+    runtime_probe=True,
+    collect_tests=False,
+):
     """
     Run a full scan and persist it as a new ScanRun.
+
+    `root` overrides the scanned backend tree (default: this checkout's
+    `backend/`). Only the source-file rules follow it -- registry and runtime
+    rules always introspect the live Django process, which is why the CLI
+    documents `--root` as a source-scope switch.
 
     Every run gets its own rows (history is append-only across runs); within
     a run, evidence dicts colliding on the same (rule, file, line)
@@ -88,7 +101,7 @@ def run_scan_and_store(*, branch="worktree", trigger="cli", rule_ids=None, runti
     double-store the same location. Returns the persisted ScanRun.
     """
     drafts, per_rule_log = collect_findings(
-        root=BACKEND_ROOT,
+        root=Path(root).resolve() if root else BACKEND_ROOT,
         rule_ids=rule_ids,
         runtime_probe=runtime_probe,
         collect_tests=collect_tests,
@@ -106,7 +119,10 @@ def run_scan_and_store(*, branch="worktree", trigger="cli", rule_ids=None, runti
         line_no = draft.get("line_no")
         fingerprint = Finding.make_fingerprint(rule_id, file_path, line_no)
         defaults = {
+            "rule_id": rule_id,
             "severity": draft.get("severity", RULE_SEVERITY[rule_id]),
+            "file_path": file_path,
+            "line_no": line_no,
             "message": draft["message"],
         }
         # update_or_create on the (scan_run, fingerprint) unique pair -> no dupes.

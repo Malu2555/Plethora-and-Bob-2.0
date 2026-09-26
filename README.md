@@ -23,6 +23,10 @@ python manage.py runserver
 
 Interactive OpenAPI docs: http://localhost:8000/api/v1/docs
 
+The repo root carries a thin `requirements.txt` forwarding to
+`backend/requirements.txt`, so `pip install -r requirements.txt` works from
+either directory — edit pins in `backend/requirements.txt` only.
+
 ### Frontend (http://localhost:5173)
 
 ```powershell
@@ -33,6 +37,26 @@ npm run build # production bundle -> dist/
 ```
 
 Sign in with your Django superuser credentials, or create an account from /register.
+
+### Parallel checkouts (`git worktree`)
+
+Exercise a second branch (e.g. a demo branch with deliberate flaws) without
+disturbing this checkout:
+
+```powershell
+git worktree add ../demo-start -b demo-start
+New-Item -ItemType Junction -Path ../demo-start/backend/.venv -Target (Resolve-Path backend/.venv).Path
+
+cd backend
+python manage.py security_scan --root ..\..\demo-start\backend --branch demo-start
+```
+
+The sibling directory shares this repository's history but has its own
+working files, so commits on `demo-start` never touch this checkout. The
+`backend/.venv` junction reuses this interpreter (no second `pip install`);
+untracked files such as `backend/.env` and `db.sqlite3` do not travel between
+worktrees. `--root` scopes the source-file rules to the sibling tree — see
+Security Metrics for its exact reach.
 
 ## API surface (all under /api/v1)
 
@@ -70,9 +94,14 @@ Security Metrics section below. `medium`/`low` remain reserved.
 A dashboard-driven vulnerability scanner snapshots the checkout tree for
 seven vulnerability classes. Run it from the CLI
 (`python manage.py security_scan`, see `--help` for `--rule`, `--dry-run`,
-`--no-runtime-probe`, `--no-collect-tests`; exit code 1 = critical findings,
-ready for CI gating) or from the dashboard via POST /security/scan — the
-"Findings" page shows run history, per-rule totals, and a drill-down panel.
+`--root`, `--no-runtime-probe`, `--no-collect-tests`; exit code 1 =
+critical findings, ready for CI gating) or from the dashboard via POST
+/security/scan — the "Findings" page shows run history, per-rule totals, and
+a drill-down panel. `--root` points the source-side rules (raw_sql,
+hardcoded_secret, absent_tests) at another checkout — e.g. a sibling
+worktree — with the branch label defaulting to the target directory name;
+registry rules and the N+1 probe always introspect the running Django
+process.
 
 | Rule                 | Weight | Severity | What it flags                                                      |
 |----------------------|--------|----------|--------------------------------------------------------------------|
@@ -110,7 +139,7 @@ a `backend/security/rules/*` module, and nothing else.
 
 ```powershell
 cd backend
-python -m pytest        # 78 tests: CRUD + auth + register + IDOR + throttle + audit + posture + scanner
+python -m pytest        # 83 tests: CRUD + auth + register + IDOR + throttle + audit + posture + scanner
 python manage.py check  # django system check (no issues)
 python manage.py security_scan   # 0 findings on a clean tree (CI-gate exit code)
 ```
@@ -142,7 +171,7 @@ backend/
   auditlog/           AuditLog model + post_save/post_delete signals + feed API
   security/           posture aggregate endpoint + scanner (models, weights,
                       rules/, API endpoints, management command)
-  tests/              pytest suite (conftest + 6 test modules)
+  tests/              pytest suite (conftest + 9 test modules)
   logs/sentinel.log   rotating structured log (console + file)
 frontend/
   src/utils/          logger (level-filtered), session, jwt, toast
