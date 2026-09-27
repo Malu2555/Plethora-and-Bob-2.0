@@ -15,12 +15,15 @@ lives under one versioned prefix:
     GET    /api/v1/audit                -> 200 paginated telemetry feed
     GET    /api/v1/security/posture     -> 200 aggregate security snapshot
 
+    GET    /healthz                     -> 200 liveness probe for the platform
+
 Interactive OpenAPI docs are served by django-ninja at /api/v1/docs.
 """
 
 import logging
 
 from django.contrib import admin
+from django.http import JsonResponse
 from django.urls import path
 from ninja import NinjaAPI
 
@@ -48,7 +51,14 @@ api.add_router("vault", vault_router, tags=["Vault"])
 api.add_router("audit", audit_router, tags=["Audit"])
 api.add_router("security", security_router, tags=["Security"])
 
+
+def healthz(_request):
+    """Liveness probe for the hosting platform's health check (always 200)."""
+    return JsonResponse({"service": "sentinel-monitor", "status": "ok"})
+
+
 urlpatterns = [
+    path("healthz", healthz),
     path("admin/", admin.site.urls),
     path("api/v1/", api.urls),
 ]
