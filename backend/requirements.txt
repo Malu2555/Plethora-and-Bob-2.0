@@ -11,5 +11,6 @@ django-cors-headers>=4.3,<6  # dev CORS for the Vite frontend on :5173
 PyJWT>=2.9                 # cryptographic JWT backend used by django-ninja-jwt
 python-dotenv>=1.0,<2.0    # loads backend/.env into settings (secrets & flags)
 psycopg[binary]>=3.2,<4.0  # PostgreSQL driver for prod (SENTINEL_DB_ENGINE=postgresql)
+gunicorn>=21.2,<24         # WSGI process manager (replaces manage.py runserver in prod)
 pytest>=8.3,<9.0           # test runner
 pytest-django>=4.9,<6.0    # Django integration for pytest (django_db fixtures)
