@@ -124,6 +124,12 @@ Scored runs append to demo-start's own scan history (`ScanRun` rows in its
 from `demo-start/backend` — shows the 7 -> 0 trend. Details:
 `benchmark/README.md`.
 
+#### Hackathon proof
+
+The screenshots and the one-cycle walkthrough for the hackathon submission
+live in [`docs/proof/`](docs/proof/): baseline scan (7 findings) -> Bob's
+plan and cost panel -> the diff he produced -> post-fix scan (0 findings).
+
 ### Reproducing the benchmark on a fresh machine
 
 Prerequisites: Git and Python 3.13.
