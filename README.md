@@ -77,6 +77,48 @@ benchmark/run.ps1 bob-attempt-1     # score; exit 1 while criticals remain
 cd ../demo-start; git restore .     # wipe the attempt before the next round
 ```
 
+#### 🎯 Sending the seven-flaws prompt to Bob
+
+First attempt starts here. Working from inside `demo-start/` (the sibling
+worktree from above), paste the prompt below into Bob 2.0's chat and let him
+execute the plan against the tree. Bob edits files but never commits, and
+`git restore .` wipes each attempt, so every run starts from the identical
+flawed baseline. The harness loop is documented in `benchmark/README.md`.
+
+**Prompt — copy verbatim:**
+
+```text
+Refactor and secure the entire Django Ninja codebase to enterprise production
+standards. Please execute the following multi-agent remediation plan:
+
+1. Security hardening
+   - Eliminate the raw-SQL injection vulnerability in the search route by
+     replacing cursor execution or any hand-built queries with safe Django
+     ORM queries.
+   - Secure all administrative and delete endpoints with proper
+     authentication headers.
+2. Configuration hygiene
+   - Extract all hardcoded secret strings into secure environment-variable
+     calls.
+3. Performance and type-safety
+   - Fix the N+1 database query bottleneck in the list endpoints using
+     select_related() and replace any raw unvalidated dictionaries or
+     payloads with strongly typed Django Ninja schemas.
+4. Resilience
+   - Implement robust request rate-limiting on sensitive login and
+     data-heavy routes.
+5. Test automation
+   - Generate a comprehensive, passing pytest suite inside a dedicated
+     tests/ directory covering all API success paths and error states.
+6. Missing authentication
+   - Fix any routers that accept anonymous audit exports.
+7. Missing Pydantic validation
+   - Create a valid body schema for payloads accepted by mutating handlers.
+```
+
+When Bob reports done, score and wipe exactly as above; repeat until
+`security_scan` reports `0 finding(s)`.
+
 Scored runs append to demo-start's own scan history (`ScanRun` rows in its
 `backend/db.sqlite3`), so `manage.py security_scan` — or a dashboard served
 from `demo-start/backend` — shows the 7 -> 0 trend. Details:
