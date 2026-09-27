@@ -351,3 +351,26 @@ def start_scan(request, payload: ScanIn):
         ",".join(pending) if pending else "all",
     )
     return Status(202, ScanAcceptedOut(scan_run_id=placeholder.pk, status="queued"))
+
+
+@router.delete("/cache/")
+def clear_scan_cache(request):
+    """
+    Demo regression (R4): destructive cache purge with no rate-limit throttle
+    -- mutating endpoints must carry one (see SCAN_THROTTLE on POST /scan).
+    """
+    from django.core.cache import cache
+
+    cache.clear()
+    logger.info("security.cache_cleared user=%s", request.auth.pk)
+    return {"cleared": True}
+
+
+@router.post("/manual_flag/", throttle=SCAN_THROTTLE)
+def manual_flag(request, payload):
+    """
+    Demo regression (R7): mutating handler binds no pydantic body model --
+    request data reaches the logic unvalidated.
+    """
+    logger.info("security.manual_flag user=%s payload=%s", request.auth.pk, payload)
+    return {"flagged": True}

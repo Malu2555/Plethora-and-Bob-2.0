@@ -36,12 +36,9 @@ load_dotenv(BASE_DIR / ".env")
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-# The value comes from backend/.env (local dev) or the real environment
-# (prod). The fallback below exists ONLY so a fresh clone boots without
-# setup; never rely on it anywhere real (see .env.example).
-SECRET_KEY = os.environ.get(
-    "SENTINEL_SECRET_KEY", "django-insecure-dev-only-sentinel-9f3a2b1c"
-)
+# Demo regression (R3): the signing key is committed straight into source
+# instead of coming from backend/.env / the real environment.
+SECRET_KEY = "Ab1Cd2Ef3Gh4Ij5k6LmoPqrStuVwXyz0q"
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("SENTINEL_DEBUG", "1") == "1"
