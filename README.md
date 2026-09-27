@@ -203,7 +203,7 @@ process.
 | n_plus_one           | 10     | warning  | runtime probe: per-row query fan-out on populated list routes      |
 | missing_pydantic     | 10     | warning  | mutating handlers without a pydantic body model                    |
 
-Key behaviours:
+Key behaviors:
 
 - **Two streams, never mixed.** `AuditLog` stays runtime-facts-only; scanner
   output lands in dedicated `ScanRun` + `Finding` tables. The posture score
