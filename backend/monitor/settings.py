@@ -51,6 +51,13 @@ ALLOWED_HOSTS = (
     _ALLOWED_HOSTS.split(",") if _ALLOWED_HOSTS else ["localhost", "127.0.0.1"]
 )
 
+# Render injects RENDER_EXTERNAL_HOSTNAME into every deployed process (free
+# tier included). Append it so a fresh deploy is reachable without having to
+# hand-copy the generated *.onrender.com hostname into SENTINEL_ALLOWED_HOSTS.
+_RENDER_HOST = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip()
+if _RENDER_HOST and _RENDER_HOST not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS = [*ALLOWED_HOSTS, _RENDER_HOST]
+
 
 # Application definition
 

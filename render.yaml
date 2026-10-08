@@ -1,0 +1,96 @@
+# render.yaml — Sentinel Monitor monorepo Blueprint.
+#
+# Free-plan compatible: one Python web service (Django 6.1 + django-ninja API)
+# and one static site (Vue 3 + Vite SPA). Deploy by pointing Render at this
+# repository and choosing "Blueprint" — Render reads this file and provisions
+# both services (and their env-var contract) in one go.
+#
+# Secrets are NEVER committed here: entries marked `sync: false` are prompted
+# for in the Render dashboard on first deploy and stored encrypted.
+#
+# Local development is unaffected — Render only reads this file on its side.
+# Validated against https://render.com/docs/blueprint-spec
+
+services:
+  # ------------------------------------------------------------------------
+  # Backend — Django + django-ninja API, served by gunicorn.
+  # ------------------------------------------------------------------------
+  - type: web
+    name: sentinel-backend
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    # The free plan has no Release Command, so migrations are chained into
+    # the start command. `migrate --noinput` is idempotent: on an up-to-date
+    # database it is a no-op, so repeated deploys stay safe.
+    startCommand: >-
+      python manage.py migrate --noinput &&
+      gunicorn monitor.wsgi:application
+      --bind 0.0.0.0:$PORT
+      --workers 2
+      --timeout 30
+      --access-logfile -
+      --error-logfile -
+    healthCheckPath: /healthz
+    envVars:
+      # --- runtime flags ---
+      - key: PYTHON_VERSION
+        value: 3.13.7
+      - key: SENTINEL_DEBUG
+        value: "0"
+      # The backend's own public hostname. Render also injects
+      # RENDER_EXTERNAL_HOSTNAME automatically and settings.py appends it;
+      # this explicit value additionally covers a custom domain.
+      - key: SENTINEL_ALLOWED_HOSTS
+        value: sentinel-backend.onrender.com
+      # The frontend origin allowed to call this API from a browser.
+      - key: SENTINEL_CORS_ORIGINS
+        value: https://sentinel-frontend.onrender.com
+      # --- secret (prompted on first deploy; never stored in git) ---
+      - key: SENTINEL_SECRET_KEY
+        sync: false
+      # --- Neon Postgres (direct endpoint — no "-pooler" in the host) ---
+      - key: SENTINEL_DB_ENGINE
+        value: postgresql
+      - key: SENTINEL_DB_NAME
+        value: neondb
+      - key: SENTINEL_DB_USER
+        value: neondb_owner
+      - key: SENTINEL_DB_PASSWORD
+        sync: false
+      - key: SENTINEL_DB_HOST
+        value: ep-rough-violet-b410uz3x.c-6.us-east-2.aws.neon.tech
+      - key: SENTINEL_DB_PORT
+        value: "5432"
+      - key: SENTINEL_DB_CONN_MAX_AGE
+        value: "60"
+      # Neon requires TLS; channel binding is mandated by its connection string.
+      - key: PGSSLMODE
+        value: require
+      - key: PGCHANNELBINDING
+        value: require
+
+  # ------------------------------------------------------------------------
+  # Frontend — Vue 3 SPA. Render serves frontend/dist/ as a static site.
+  # ------------------------------------------------------------------------
+  - type: static
+    name: sentinel-frontend
+    plan: free
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      # Vite inlines VITE_API_URL into the bundle at BUILD time (see
+      # frontend/src/services/api.js). It points at the backend service's
+      # external URL — the service name above makes this predictable.
+      - key: VITE_API_URL
+        value: https://sentinel-backend.onrender.com/api/v1
+    # SPA fallback: vue-router runs in history mode (createWebHistory), so any
+    # URL without a matching file must serve /index.html and let the
+    # client-side router take over. Blueprint equivalent of the dashboard rule:
+    #   [ { "source": "/(.*)", "destination": "/index.html" } ]
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
