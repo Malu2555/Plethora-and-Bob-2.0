@@ -62,8 +62,10 @@ REGISTER_THROTTLE = RegisterThrottle("12/m")
 
 # Shape-only guardrails; the real strength checks are Django's
 # AUTH_PASSWORD_VALIDATORS, run explicitly inside the register handler.
+# Usernames are validated by the length constraints on RegisterIn only —
+# the stricter ASCII pattern was dropped so Django's own UnicodeUsernameValidator
+# (which also accepts '@' and '+') is the single source of truth for the shape.
 EMAIL_PATTERN = r"^[^\s@]+@[^\s@]+\.[^\s@]+$"
-USERNAME_PATTERN = r"^[A-Za-z0-9._-]+$"
 
 
 class TokenIn(BaseModel):
@@ -130,7 +132,7 @@ def refresh_access(request, payload: RefreshIn):
 class RegisterIn(BaseModel):
     """Account-creation payload accepted by POST /auth/register."""
 
-    username: str = Field(min_length=3, max_length=150, pattern=USERNAME_PATTERN)
+    username: str = Field(min_length=3, max_length=150)
     email: str = Field(min_length=3, max_length=254, pattern=EMAIL_PATTERN)
     password: str = Field(min_length=8, max_length=128)
 
@@ -162,6 +164,14 @@ def register_account(request, payload: RegisterIn):
     User = get_user_model()
     username = payload.username.strip()
     email = payload.email.strip().lower()
+
+    # pydantic enforces min_length on the RAW value; stripping can shrink it
+    # below the minimum (or to nothing), and Django's create_user raises a bare
+    # ValueError for an empty username — which would surface as a 500. Guard
+    # here so the endpoint's contract stays a clean 422.
+    if len(username) < 3:
+        logger.warning("auth.register_short_username after strip")
+        raise HttpError(422, "Username must be at least 3 characters.")
 
     # One generic probe result for both identity collisions (anti-enumeration).
     if (

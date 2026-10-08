@@ -104,6 +104,35 @@ def test_password_too_similar_to_username_returns_422(api_client, db):
     assert _register(api_client, password="carol123").status_code == 422
 
 
+def test_whitespace_only_username_returns_422_not_500(api_client, db):
+    """
+    Stripping can empty a username that passed pydantic's raw min_length.
+
+    Without a post-strip guard Django's create_user raises ValueError, which
+    would surface as a 500. The contract must stay a clean 422.
+    """
+    resp = _register(api_client, username="     ")
+    assert resp.status_code == 422
+
+
+def test_username_with_at_sign_is_accepted(api_client, db):
+    """
+    Regression guard for the removed USERNAME_PATTERN.
+
+    The API used to reject '@' in usernames (pattern ^[A-Za-z0-9._-]+$), which
+    was stricter than Django's own UnicodeUsernameValidator. With the pattern
+    gone, an email-shaped username must be accepted again.
+    """
+    resp = _register(
+        api_client,
+        username="bob@example.com",
+        email="bob@example.com",
+        password="quiet-morning-quilt-9",
+    )
+    assert resp.status_code == 201
+    assert resp.json()["username"] == "bob@example.com"
+
+
 def test_registration_burst_eventually_returns_429(api_client, db):
     """
     The 12/m ceiling trips inside one test (the bucket is reset per test).
